@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="traj_pred" type="traj_pred_node.py" name="trajectory_Prediction_Node" output="screen" />
+</launch>
