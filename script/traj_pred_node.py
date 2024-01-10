@@ -15,10 +15,16 @@ from attrdict import AttrDict
 from models.models import TrajectoryGenerator
 from visualization_msgs.msg import MarkerArray, Marker
 from geometry_msgs.msg import Point
+import random
+import random
 
 # Global variables
 DEBUG = False
 MAX_CONSIDERED_PEDS = 10
+corlor_list = []
+for i in range(MAX_CONSIDERED_PEDS):
+    corlor_list.append([round(random.uniform(0, 1), 1) for _ in range(3)])
+
 
 class twoDimQueue:
     def __init__(self) -> None:
@@ -115,7 +121,7 @@ class MarkerArrayCallbackClass:
             
             marker = Marker()
             marker.header.frame_id = "os_sensor"
-            marker.ns = "pedestrian"
+            marker.ns = "prediction" if publisher == self.pub_pred else "observation"
             marker.type = marker.SPHERE_LIST
             marker.action = marker.ADD
             
@@ -124,17 +130,20 @@ class MarkerArrayCallbackClass:
             marker.scale.z = 0.1
             
             marker.color.a = 1.0
-            marker.color.r = 0.0 if publisher == self.pub_pred else 0.8
-            marker.color.g = ped_idx   / float(max_ped_num) if publisher == self.pub_pred else 0.0
-            marker.color.b = ped_idx   / float(max_ped_num) if publisher == self.pub_pred else 0.0
+            marker.color.r = corlor_list[ped_idx][0] if publisher == self.pub_pred else 1.0
+            marker.color.g = corlor_list[ped_idx][1] if publisher == self.pub_pred else 1.0
+            marker.color.b = corlor_list[ped_idx][2] if publisher == self.pub_pred else 1.0
             marker.pose.orientation.w = 1.0
+            marker.pose.orientation.x = 0.0
+            marker.pose.orientation.y = 0.0
+            marker.pose.orientation.z = 0.0
 
             for steps_idx in range(max_pos_num):
                 point = Point()
                 point.x = data[steps_idx, ped_idx, 0]
                 point.y = data[steps_idx, ped_idx, 1]
                 point.z = 0
-                marker.id = max_ped_num * (ped_idx + 1) + steps_idx  # 设置唯一的id
+                marker.id = max_pos_num * (ped_idx) + steps_idx  # 设置唯一的id
                 marker.points.append(point)
 
             marker_array.markers.append(marker)
@@ -147,6 +156,8 @@ class MarkerArrayCallbackClass:
 
         if peds_in_curr_seq:
             max_ped_nums = max(peds_in_curr_seq) + 1
+            if max_ped_nums > MAX_CONSIDERED_PEDS:
+                rospy.logwarn("Observed pedestrians exceed the maximum number, only consider the first %s pedestrians.", MAX_CONSIDERED_PEDS)
         else:
             max_ped_nums = 0
             rospy.logwarn("no peds in current seq")
