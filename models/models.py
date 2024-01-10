@@ -508,7 +508,6 @@ class TrajectoryGenerator(nn.Module):
         Output:
         - pred_traj_rel: Tensor of shape (self.pred_len, batch, 2)
         """
-        
         batch = obs_traj_rel.size(1)
         # Encode seq
         final_encoder_h = self.encoder(obs_traj_rel)
