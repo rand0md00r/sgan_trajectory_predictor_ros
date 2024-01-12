@@ -1,4 +1,6 @@
-# 项目名称
+> **注意：** 本文件由人工智能生成，可能存在错误。在使用本文件中的信息时，请进行适当的验证。
+
+# sgan_trajectory_predictor_ros
 
 这是一个基于 ROS (Robot Operating System) 的 Python 节点项目，用于处理和分析机器人的轨迹数据。
 
