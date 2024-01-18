@@ -28,31 +28,38 @@ parser.add_argument('--pred_topic', type=str, default='traj_pred_node/prediction
 parser.add_argument('--obs_topic',  type=str, default='traj_pred_node/observations', help='topic of observations.')
 
 parserArgs = parser.parse_args()
-print("debug:", parserArgs.debug)
+
 corlor_list = []
 for i in range(parserArgs.max_peds):
     corlor_list.append([round(random.uniform(0, 1), 1) for _ in range(3)])
 
 
-class twoDimQueue:
+class frameData:
     def __init__(self) -> None:
-        self.queue_2d = collections.deque([], maxlen=parserArgs.max_peds) 
-        for i in range(parserArgs.max_peds):        
-            self.queue_2d.appendleft(collections.deque([[0.0, 0.0]]*8, maxlen=8)) # 10个“8个（0.0， 0.0）”
+        # self.queue_2d = collections.deque([], maxlen=parserArgs.max_peds) 
+        # for i in range(parserArgs.max_peds):        
+            # self.queue_2d.appendleft(collections.deque([[0.0, 0.0]]*8, maxlen=8)) # 10个“8个（0.0， 0.0）”
+        self.traj_dict = {}
 
     def is_empty(self):
-        return len(self.queue_2d) == 0
+        return len(self.traj_dict) == 0
     
     def size(self):
-        return len(self.queue_2d)
+        return len(self.traj_dict)
     
-    def new_person(self):
-        self.queue_2d.append(self.queue_zero_steps)
+    def add_new_person(self, new_peds_ids=list):
+        for ped_id in new_peds_ids:
+            self.traj_dict[ped_id] = collections.deque([[0.0, 0.0]]*8, maxlen=8)
         
-    def update(self, namespase=str, position_x=float, position_y=float):
-        ns_int = int(float(namespase))
-        ns_int = ns_int % parserArgs.max_peds
-        self.queue_2d[ns_int].append([position_x, position_y])
+    def del_lost_person(self, lost_peds_ids=list):
+        for ped_id in lost_peds_ids:
+            self.traj_dict.pop(ped_id)
+        
+    def update(self, id=str, position_x=float, position_y=float):
+        # ns_int = int(float(namespase))
+        # ns_int = ns_int % parserArgs.max_peds
+        # self.queue_2d[ns_int].append([position_x, position_y])
+        self.traj_dict[id].append([position_x, position_y])
 
 
 class MarkerArrayCallbackClass:
@@ -65,7 +72,12 @@ class MarkerArrayCallbackClass:
         self.pred_traj_fake = torch.Tensor()
         self.generator = self.loadModel()
         
-        self.frame_data = twoDimQueue()
+        self.curr_peds = []
+        self.last_obs_peds = []
+        self.lost_peds = []
+        self.new_peds = []
+
+        self.frame_data = frameData()
 
         self.pub_pred = pub_pred
         self.pub_obs = pub_obs
@@ -159,29 +171,47 @@ class MarkerArrayCallbackClass:
 
 
     def get_obs_traj(self, markarray):
-        # 确定当前帧的人数 max_ped_nums
-        peds_in_curr_seq = [int(float(marker.ns)) % parserArgs.max_peds for marker in markarray.markers]
+        # 确定当前帧行人id
+        self.curr_peds = [int(float(marker.ns)) for marker in markarray.markers]
+        rospy.logdebug("curr ped: %s", self.curr_peds)
 
-        if peds_in_curr_seq:
-            max_ped_nums = max(peds_in_curr_seq) + 1
+        # 根据上一帧行人和当前帧行人，确定新出现的行人和消失的行人
+        self.new_peds = list(set(self.curr_peds) - set(self.last_obs_peds))
+        self.lost_peds = list(set(self.last_obs_peds) - set(self.curr_peds))
+        self.last_obs_peds = self.curr_peds
+        rospy.logdebug("new ped: %s", self.new_peds)
+        rospy.logdebug("lost ped: %s", self.lost_peds)
+
+
+        # 确定当前帧的人数 max_ped_nums
+        if self.curr_peds:
+            max_ped_nums = len(self.curr_peds)
             if max_ped_nums > parserArgs.max_peds:
-                rospy.logwarn("Observed pedestrians exceed the maximum number, only consider the first %s pedestrians.", parserArgs.max_peds)
+                rospy.logwarn("Observed pedestrians exceed the maximum number, only consider the first %s peds, but obs %s peds", parserArgs.max_peds, max_ped_nums)
         else:
             max_ped_nums = 0
             rospy.logwarn("no peds in current seq")
             return
 
-
-        # 更新当前帧frame_data
+        # 根据lost和new，更新frame_data, 删、增、更新
+        for ped_id in self.lost_peds:
+            self.frame_data.del_lost_person([ped_id])
+            
+        for ped_id in self.new_peds:
+            self.frame_data.add_new_person([ped_id])
+            
         for marker in markarray.markers:
-            self.frame_data.update(marker.ns, marker.pose.position.x, marker.pose.position.y)
-        
+            self.frame_data.update(int(float(marker.ns)), marker.pose.position.x, marker.pose.position.y)
+        # for marker in markarray.markers:
+        #     self.frame_data.update(marker.ns, marker.pose.position.x, marker.pose.position.y)
+
         # 根据 frame_data 和 max_ped_nums 确定obs_traj
         obs_traj_np = np.zeros((8, max_ped_nums, 2))
         obs_traj_rel_np = np.zeros((8, max_ped_nums, 2))
 
-        for cur_ped_name in range(max_ped_nums):
-            obs_traj_np[:, cur_ped_name, :] = np.array(self.frame_data.queue_2d[cur_ped_name])
+        for cur_ped_idx in range(max_ped_nums):
+            real_ped_id = self.curr_peds[cur_ped_idx]
+            obs_traj_np[:, cur_ped_idx, :] = np.array(self.frame_data.traj_dict[real_ped_id])
 
         obs_traj_np = np.around(obs_traj_np, decimals=4)  # (8, max_ped_nums + 1, 2)
         obs_traj_rel_np[1:, :, :] = obs_traj_np[1:, :, :] - obs_traj_np[:-1, :, :]
@@ -232,6 +262,11 @@ if __name__ == '__main__':
         mot_box_topic = '/mot_tracking/box'
         rospy.init_node('trajectory_Prediction_Node', anonymous=True, log_level=rospy.INFO)
     
+    rospy.loginfo("model_name: %s", parserArgs.model_name)
+    rospy.loginfo("max_peds: %s", parserArgs.max_peds)
+    rospy.loginfo("debug: %s", parserArgs.debug)
+    rospy.loginfo("pred_topic: %s", parserArgs.pred_topic)
+    rospy.loginfo("obs_topic: %s", parserArgs.obs_topic)
     
     pub_pred = rospy.Publisher(parserArgs.pred_topic, MarkerArray, queue_size=8)
     pub_obs = rospy.Publisher(parserArgs.obs_topic, MarkerArray, queue_size=8)
