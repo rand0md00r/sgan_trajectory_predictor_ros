@@ -19,6 +19,9 @@ import random
 import random
 
 # Global variables
+# model = '/home/work_space/src/traj_pred/models/checkpoint/sgan-p-models/eth_8_model.pt'
+# model = '/home/work_space/src/traj_pred/models/checkpoint/sgan-plygrd-models/ply_grd_1.pt_with_model.pt'
+model = '/home/work_space/src/traj_pred/models/checkpoint/sgan-p-models/hotel_8_model.pt'
 DEBUG = False
 MAX_CONSIDERED_PEDS = 10
 corlor_list = []
@@ -66,7 +69,7 @@ class MarkerArrayCallbackClass:
 
     def loadModel(self):
         # 加载预训练的PyTorch模型
-        model_path = '/home/work_space/src/traj_pred/models/checkpoint/sgan-p-models/eth_8_model.pt'
+        model_path = model
         checkpoint = torch.load(model_path)
         args = AttrDict(checkpoint['args'])
         generator = TrajectoryGenerator(
