@@ -4,6 +4,7 @@
 import sys
 sys.path.append('/home/work_space/src/traj_pred/')
 
+import argparse
 import time
 import rospy
 import torch
@@ -16,23 +17,27 @@ from models.models import TrajectoryGenerator
 from visualization_msgs.msg import MarkerArray, Marker
 from geometry_msgs.msg import Point
 import random
-import random
 
 # Global variables
-# model = '/home/work_space/src/traj_pred/models/checkpoint/sgan-p-models/eth_8_model.pt'
-# model = '/home/work_space/src/traj_pred/models/checkpoint/sgan-plygrd-models/ply_grd_1.pt_with_model.pt'
-model = '/home/work_space/src/traj_pred/models/checkpoint/sgan-p-models/hotel_8_model.pt'
-DEBUG = False
-MAX_CONSIDERED_PEDS = 10
+parser = argparse.ArgumentParser()
+
+parser.add_argument('--model_name', type=str, default='/home/work_space/src/traj_pred/models/checkpoint/sgan-p-models/eth_8_model.pt', help='path for loading trained models.')
+parser.add_argument('--max_peds',   type=int, default=15, help='max considered peds.')
+parser.add_argument('--debug',      type=str, default='False', help='debug mode.')
+parser.add_argument('--pred_topic', type=str, default='traj_pred_node/predictions', help='topic of predictions.')
+parser.add_argument('--obs_topic',  type=str, default='traj_pred_node/observations', help='topic of observations.')
+
+parserArgs = parser.parse_args()
+print("debug:", parserArgs.debug)
 corlor_list = []
-for i in range(MAX_CONSIDERED_PEDS):
+for i in range(parserArgs.max_peds):
     corlor_list.append([round(random.uniform(0, 1), 1) for _ in range(3)])
 
 
 class twoDimQueue:
     def __init__(self) -> None:
-        self.queue_2d = collections.deque([], maxlen=MAX_CONSIDERED_PEDS) 
-        for i in range(MAX_CONSIDERED_PEDS):        
+        self.queue_2d = collections.deque([], maxlen=parserArgs.max_peds) 
+        for i in range(parserArgs.max_peds):        
             self.queue_2d.appendleft(collections.deque([[0.0, 0.0]]*8, maxlen=8)) # 10个“8个（0.0， 0.0）”
 
     def is_empty(self):
@@ -45,8 +50,8 @@ class twoDimQueue:
         self.queue_2d.append(self.queue_zero_steps)
         
     def update(self, namespase=str, position_x=float, position_y=float):
-        ns_int = int(namespase)
-        ns_int = ns_int % MAX_CONSIDERED_PEDS
+        ns_int = int(float(namespase))
+        ns_int = ns_int % parserArgs.max_peds
         self.queue_2d[ns_int].append([position_x, position_y])
 
 
@@ -69,7 +74,7 @@ class MarkerArrayCallbackClass:
 
     def loadModel(self):
         # 加载预训练的PyTorch模型
-        model_path = model
+        model_path = parserArgs.model_name
         checkpoint = torch.load(model_path)
         args = AttrDict(checkpoint['args'])
         generator = TrajectoryGenerator(
@@ -155,12 +160,12 @@ class MarkerArrayCallbackClass:
 
     def get_obs_traj(self, markarray):
         # 确定当前帧的人数 max_ped_nums
-        peds_in_curr_seq = [int(marker.ns) % MAX_CONSIDERED_PEDS for marker in markarray.markers]
+        peds_in_curr_seq = [int(float(marker.ns)) % parserArgs.max_peds for marker in markarray.markers]
 
         if peds_in_curr_seq:
             max_ped_nums = max(peds_in_curr_seq) + 1
-            if max_ped_nums > MAX_CONSIDERED_PEDS:
-                rospy.logwarn("Observed pedestrians exceed the maximum number, only consider the first %s pedestrians.", MAX_CONSIDERED_PEDS)
+            if max_ped_nums > parserArgs.max_peds:
+                rospy.logwarn("Observed pedestrians exceed the maximum number, only consider the first %s pedestrians.", parserArgs.max_peds)
         else:
             max_ped_nums = 0
             rospy.logwarn("no peds in current seq")
@@ -220,7 +225,7 @@ class MarkerArrayCallbackClass:
 
 
 if __name__ == '__main__':
-    if DEBUG == True:
+    if parserArgs.debug == 'True':
         mot_box_topic = 'motion_markers'
         rospy.init_node('trajectory_Prediction_Node', anonymous=True, log_level=rospy.DEBUG)
     else:
@@ -228,8 +233,8 @@ if __name__ == '__main__':
         rospy.init_node('trajectory_Prediction_Node', anonymous=True, log_level=rospy.INFO)
     
     
-    pub_pred = rospy.Publisher('traj_pred_node/predictions', MarkerArray, queue_size=8)
-    pub_obs = rospy.Publisher('traj_pred_node/observations', MarkerArray, queue_size=8)
+    pub_pred = rospy.Publisher(parserArgs.pred_topic, MarkerArray, queue_size=8)
+    pub_obs = rospy.Publisher(parserArgs.obs_topic, MarkerArray, queue_size=8)
     
     MarkerArrayCallbackClass = MarkerArrayCallbackClass(pub_pred, pub_obs)
     
