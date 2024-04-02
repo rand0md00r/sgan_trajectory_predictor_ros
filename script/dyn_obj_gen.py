@@ -34,7 +34,7 @@ class CircleMotionNode:
                 radius = 3.0
                 marker.pose.position.x = center_x + radius * math.cos(angle+ i * 2.0 * math.pi / 3.0) #  + i * 2.0 * math.pi / 3.0
                 marker.pose.position.y = center_y + radius * math.sin(angle+ i * 2.0 * math.pi / 3.0)
-                marker.pose.position.z = 0.0
+                marker.pose.position.z = 0.5
                 marker.pose.orientation.w = 1.0
                 marker.scale.x = 0.5
                 marker.scale.y = 0.5
